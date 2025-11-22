@@ -1,2 +1,3 @@
-FROM docker.io/httpd
-COPY . /usr/local/apache2/htdocs
+FROM docker.io/nginx:alpine
+COPY . /usr/share/nginx/html
+EXPOSE 80
