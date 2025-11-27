@@ -1,0 +1,53 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_USER = "vaibhav8082"
+        IMAGE_NAME = "tours-travel-app"
+        EC2_IP = "YOUR_EC2_PUBLIC_IP"
+    }
+
+    stages {
+        stage('Clone Repo') {
+            steps {
+                git branch: 'main', url: 'https://github.com/vaibhavj8082/tours-travel-webapp-dockerized.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $DOCKERHUB_USER/$IMAGE_NAME:latest .'
+            }
+        }
+
+        stage('Login to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh 'echo $PASSWORD | docker login -u $USERNAME --password-stdin'
+                }
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                sh 'docker push $DOCKERHUB_USER/$IMAGE_NAME:latest'
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                sshagent (['EC2-SSH']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP '
+                            docker pull $DOCKERHUB_USER/$IMAGE_NAME:latest &&
+                            docker stop tours || true &&
+                            docker rm tours || true &&
+                            docker run -d --name tours -p 18080:80 $DOCKERHUB_USER/$IMAGE_NAME:latest
+                        '
+                    """
+                }
+            }
+        }
+    }
+}
