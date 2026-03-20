@@ -4,25 +4,36 @@ pipeline {
     environment {
         DOCKERHUB_USER = "vaibhav8082"
         IMAGE_NAME = "tours-travel-app"
-        EC2_IP = "YOUR_EC2_PUBLIC_IP"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        K8S_DEPLOYMENT = "tours-app"
     }
 
     stages {
+
         stage('Clone Repo') {
             steps {
                 git branch: 'main', url: 'https://github.com/vaibhavj8082/tours-travel-webapp-dockerized.git'
             }
         }
 
+        stage('Test Stage') {
+            steps {
+                echo "Running tests..."
+                // Example:
+                sh "echo 'No tests yet - add unit tests here'"
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKERHUB_USER/$IMAGE_NAME:latest .'
+                sh "docker build -t $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG ."
+                sh "docker tag $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG $DOCKERHUB_USER/$IMAGE_NAME:latest"
             }
         }
 
         stage('Login to DockerHub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
                         usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
                     sh 'echo $PASSWORD | docker login -u $USERNAME --password-stdin'
                 }
@@ -31,23 +42,33 @@ pipeline {
 
         stage('Push to DockerHub') {
             steps {
-                sh 'docker push $DOCKERHUB_USER/$IMAGE_NAME:latest'
+                sh "docker push $DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG"
+                sh "docker push $DOCKERHUB_USER/$IMAGE_NAME:latest"
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to Kubernetes') {
             steps {
-                sshagent (['EC2-SSH']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP '
-                            docker pull $DOCKERHUB_USER/$IMAGE_NAME:latest &&
-                            docker stop tours || true &&
-                            docker rm tours || true &&
-                            docker run -d --name tours -p 18080:80 $DOCKERHUB_USER/$IMAGE_NAME:latest
-                        '
-                    """
-                }
+                sh """
+                kubectl set image deployment/$K8S_DEPLOYMENT tours-container=$DOCKERHUB_USER/$IMAGE_NAME:$IMAGE_TAG || \
+                kubectl apply -f k8s/deployment.yaml
+
+                kubectl apply -f k8s/service.yaml
+                """
             }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh "kubectl rollout status deployment/$K8S_DEPLOYMENT"
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Deployment failed! Rolling back..."
+            sh "kubectl rollout undo deployment/$K8S_DEPLOYMENT"
         }
     }
 }

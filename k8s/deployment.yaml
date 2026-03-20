@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tours-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tours
+  template:
+    metadata:
+      labels:
+        app: tours
+    spec:
+      containers:
+      - name: tours-container
+        image: vaibhav8082/tours-travel-app:latest
+        ports:
+        - containerPort: 80
