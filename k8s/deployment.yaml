@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: tours-container
-        image: vaibhav8082/tours-webapp:latest
+        image: REPLACE_WITH_IMAGE
         ports:
         - containerPort: 80
