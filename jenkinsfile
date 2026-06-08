@@ -1,11 +1,71 @@
 pipeline {
     agent any
+
+    environment {
+        DOCKER_IMAGE = "vaibhavj8082/tours-travel-webapp-dockerized"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
     stages {
-        stage('Test Trigger') {
+
+        stage('Checkout') {
             steps {
-                echo 'Pipeline triggered successfully!'
-                sh 'kubectl get nodes'
+                checkout scm
             }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
+                sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS')]) {
+                        sh "echo $PASS | docker login -u $USER --password-stdin"
+                        sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                        sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl --kubeconfig=\$KUBECONFIG set image deployment/myapp \
+                        myapp=${DOCKER_IMAGE}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Verify Rollout') {
+            steps {
+                withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh "kubectl --kubeconfig=\$KUBECONFIG rollout status deployment/myapp --timeout=60s"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment Successful! Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+        }
+        failure {
+            withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
+                sh "kubectl --kubeconfig=\$KUBECONFIG rollout undo deployment/myapp"
+            }
+            echo "Deployment failed! Rolled back to previous version."
+        }
+        always {
+            sh "docker rmi ${DOCKER_IMAGE}:${IMAGE_TAG} || true"
         }
     }
 }
