@@ -38,7 +38,7 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
-                        kubectl --kubeconfig=\$KUBECONFIG set image deployment/myapp \
+                        kubectl set image --kubeconfig=\$KUBECONFIG deployment/myapp \
                         myapp=${DOCKER_IMAGE}:${IMAGE_TAG}
                     """
                 }
@@ -48,7 +48,7 @@ pipeline {
         stage('Verify Rollout') {
             steps {
                 withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh "kubectl --kubeconfig=\$KUBECONFIG rollout status deployment/myapp --timeout=60s"
+                    sh "kubectl rollout status deployment/myapp --timeout=60s --kubeconfig=\$KUBECONFIG"
                 }
             }
         }
@@ -60,7 +60,7 @@ pipeline {
         }
         failure {
             withCredentials([file(credentialsId: 'k8s-kubeconfig', variable: 'KUBECONFIG')]) {
-                sh "kubectl --kubeconfig=\$KUBECONFIG rollout undo deployment/myapp"
+                sh "kubectl rollout undo deployment/myapp --kubeconfig=\$KUBECONFIG"
             }
             echo "Deployment failed! Rolled back to previous version."
         }
